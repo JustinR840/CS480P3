@@ -8,7 +8,7 @@ import datetime, heapq
 
 def main():
 	# Get the permutation from user input
-	permutation = [5, 4, 13, 1, 6, 2, 11, 108, 67] # get_input()
+	permutation = [5, 4, 13, 1, 6, 2, 11, 67] # get_input()
 
 	DoAStarWork(permutation)
 
@@ -17,14 +17,14 @@ def DoAStarWork(permutation):
 	print("Starting A* Search")
 	startTime = datetime.datetime.now()
 
-	res, parent = AStar(permutation)
+	# Create our starting node
+	start = Node(h(permutation), permutation, 0, [])
+	# Give starting node to A*, start the A* search
+	res, parent, maxqsize, totalvisitedstates = AStar(start)
 
 	endTime = datetime.datetime.now()
-	elapsedTime = endTime - startTime
-	print("CPU time: " + str(float(elapsedTime.seconds) + float(elapsedTime.microseconds) / 1000000) + " second(s)")
 
 	if(res):
-		print("YES")
 		solutionPath = []
 
 		# The last node added to the parent array is our solution
@@ -38,49 +38,61 @@ def DoAStarWork(permutation):
 		# Reverse the solution path.
 		solutionPath = solutionPath[::-1]
 
+		print("Path to solution:")
 		for i in solutionPath:
 			print(i)
+
+		# Print out statistics
+		elapsedTime = endTime - startTime
+		print("CPU time: " + str(float(elapsedTime.seconds) + float(elapsedTime.microseconds) / 1000000) + " second(s)")
+		print("Total visited states: " + str(totalvisitedstates))
+		print("Max queue size: " + str(maxqsize))
 	else:
-		print("NO")
+		# We shouldn't actually get here but whatever.
+		print("No solution found")
 
 
-def AStar(permutation):
+def AStar(start):
 	heap = []
 	parent = []
-
-	start = Node()
-	start.priority = h(permutation)
-	start.key = permutation
-	start.distance = 0
-	start.parent = []
+	maxqsize = 0
+	totalvisitedstates = 0
 
 	heapq.heappush(heap, start)
 
 	while(len(heap) > 0):
+		# Adjust our stats
+		if(len(heap) > maxqsize):
+			maxqsize = len(heap)
+		totalvisitedstates += 1
+
+		# Get a new node from the heap
 		currentNode = heapq.heappop(heap)
 		parent.append(currentNode)
-		if(IsValid(currentNode.key)):
-			return True, parent
-		for successor in GenerateSuccessors(currentNode.key):
-			if(successor != currentNode.parent):
-				newNode = Node()
-				newNode.priority = currentNode.distance + 1 + h(successor)
-				newNode.key = successor
-				newNode.distance = currentNode.distance + 1
-				newNode.parent = currentNode
 
+		# Check if our current node's key is valid, aka in an ascending sequence
+		if(IsValid(currentNode.key)):
+			return True, parent, maxqsize, totalvisitedstates
+
+		for successor in GenerateSuccessors(currentNode.key):
+			# Don't add a node to the heap if it's the same as the current node's parent.
+			if(successor != currentNode.parent):
+				newNode = Node(currentNode.distance + 1 + h(successor), successor, currentNode.distance + 1, currentNode)
 				heapq.heappush(heap, newNode)
 
-	return False, []
+	return False, [], maxqsize, totalvisitedstates
 
 
+# Helper class to store information about each permutation
+# and for use in our A* search.
 class Node:
-	def __init__(self):
-		self.priority = -1
-		self.key = []
-		self.distance = -1
-		self.parent = None
+	def __init__(self, priority, key, distance, parent):
+		self.priority = priority
+		self.key = key
+		self.distance = distance
+		self.parent = parent
 
+	# We implement this so the heapq module can properly insert and pop elements from the heap
 	def __lt__(self, other):
 		return self.priority < other.priority
 
@@ -103,7 +115,7 @@ def GetNumBreaks(permutation):
 	return count
 
 
-# Generated the successors of a key and yields them to the caller.
+# Generates the successors of a key and yields them to the caller.
 # A successor is a key where the first 0 to n entries are reversed.
 # n > 2 and n < len(key)
 # What we return is a new list consisting of the reversed portion
@@ -132,14 +144,14 @@ def GenerateSuccessors(key):
 			yield newKey
 
 
-# Checks if a key is in the form 1, 2, 3, ... n
+# Checks if a key is in ascending order
 def IsValid(key):
-	mMax = -1
+	lastNum = -1
 
-	for i in key:
-		if(mMax > i):
+	for currentNum in key:
+		if(lastNum > currentNum):
 			return False
-		mMax = i
+		lastNum = currentNum
 	return True
 
 
