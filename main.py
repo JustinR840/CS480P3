@@ -1,6 +1,6 @@
 # CS480 Project 3
 # Created by: Elias Mote and Justin Ramos
-# Date: 10/5/18
+# Date: 10/18/18
 
 
 import datetime, heapq
@@ -8,32 +8,30 @@ import datetime, heapq
 
 def main():
 	# Get the permutation from user input
-	permutation = [5, 4, 13, 1, 6, 2, 11, 67] # get_input()
+	permutation = get_input()
 
-	DoAStarWork(permutation)
+	DoAStarGraphWork(permutation)
 
 
-def DoAStarWork(permutation):
-	print("Starting A* Search")
+def DoAStarGraphWork(permutation):
+	print("Starting A* Graph Search")
 	startTime = datetime.datetime.now()
 
 	# Create our starting node
 	start = Node(h(permutation), permutation, 0, [])
 	# Give starting node to A*, start the A* search
-	res, parent, maxqsize, totalvisitedstates = AStar(start)
+	res, solutionNode, maxqsize, totalvisitedstates = AStarGraph(start)
 
 	endTime = datetime.datetime.now()
 
 	if(res):
 		solutionPath = []
 
-		# The last node added to the parent array is our solution
-		solution = parent[-1]
 		# Following the pointers backwards until we arrive at the
 		# root node, which is the only node with a parent of [].
-		while(solution != []):
-			solutionPath.append(solution.key)
-			solution = solution.parent
+		while(solutionNode != []):
+			solutionPath.append(solutionNode.key)
+			solutionNode = solutionNode.parent
 
 		# Reverse the solution path.
 		solutionPath = solutionPath[::-1]
@@ -52,49 +50,111 @@ def DoAStarWork(permutation):
 		print("No solution found")
 
 
-def AStar(start):
-	heap = []
-	parent = []
+def AStarGraph(start):
 	maxqsize = 0
 	totalvisitedstates = 0
 
-	heapq.heappush(heap, start)
+	heap = []
+	closedSet = {}
+	openSet = {}
 
-	while(len(heap) > 0):
+	# Add starting node to heap and open set
+	heapq.heappush(heap, start)
+	# The key in our open set will be the hash of the node's key turned into a string
+	openSet[start.key.__str__()] = start
+
+	maxqsize += 1
+
+	while(len(openSet) > 0):
 		# Adjust our stats
 		if(len(heap) > maxqsize):
 			maxqsize = len(heap)
 		totalvisitedstates += 1
 
-		# Get a new node from the heap
+
 		currentNode = heapq.heappop(heap)
-		parent.append(currentNode)
+		# Cycle through invalid nodes. We do this because Python's heapq implementation does not have
+		# a decreaseKey function. So we just mark the node as invalid and push another into the heap.
+		while(currentNode.invalid):
+			currentNode = heapq.heappop(heap)
 
-		# Check if our current node's key is valid, aka in an ascending sequence
+		# Add the current node to the closed set and remove it from the open set.
+		closedSet[currentNode.key.__str__()] = currentNode
+		openSet.pop(currentNode.key.__str__())
+
+		# Check if the node's key is in the form 1, 2, 3, ..., n, indicating we've found a solution.
 		if(IsValid(currentNode.key)):
-			return True, parent, maxqsize, totalvisitedstates
+			return True, currentNode, maxqsize, totalvisitedstates
+		else:
+			for newKey in GenerateSuccessors(currentNode.key):
+				# Avoid cycles of length 2 by not trying to add a new node if the key of the new node
+				# is the same as the parent of the current node.
+				if(newKey != currentNode.parent):
+					# Try to improve existing connections in the open set, or improve and re-add nodes from
+					# the closed set, or add a completely new node into the open set.
+					Improve(openSet, closedSet, heap, currentNode, newKey)
 
-		for successor in GenerateSuccessors(currentNode.key):
-			# Don't add a node to the heap if it's the same as the current node's parent.
-			if(successor != currentNode.parent):
-				newNode = Node(currentNode.distance + 1 + h(successor), successor, currentNode.distance + 1, currentNode)
-				heapq.heappush(heap, newNode)
-
-	return False, [], maxqsize, totalvisitedstates
+	# Getting here indicates we did not find a solution.
+	return False, None, maxqsize, totalvisitedstates
 
 
-# Helper class to store information about each permutation
-# and for use in our A* search.
+def Improve(openSet, closedSet, heap, currentNode, newKey):
+	# If the node is already in our open set, check to see if we've got a better path
+	if(newKey.__str__() in openSet):
+		if(currentNode.distance + 1 < openSet[newKey.__str__()].distance):
+			# If we have a better path, then we need to make sure we use this new path instead of the old path.
+
+			# Python's heapq implementation does not have a decreaseKey function. Instead we'll set a flag on the node
+			# to True. The flag is called "invalid." When we pop the min node from a heap and it is invalid then we'll
+			# simply ignore it and just pop the next min node.
+			openSet[newKey.__str__()].SetAsInvalid()
+
+			# We'll push a new node to the heap with the better distance value. We'll also re-add the node to the
+			# open set.
+			newNode = Node(currentNode.distance + 1 + h(newKey), newKey, currentNode.distance + 1, currentNode)
+			openSet[newKey.__str__()] = newNode
+			heapq.heappush(heap, newNode)
+
+	# If the node was previously removed from the open set and is now closed, we want to check to see if we've now
+	# found a better path to that node which we can expand on.
+	elif(newKey.__str__() in closedSet):
+		if(currentNode.distance + 1 < closedSet[newKey.__str__()].distance):
+
+			# Update the node's distance value with a better path and update the parent with the new parent.
+			closedSet[newKey.__str__()].parent = currentNode
+			closedSet[newKey.__str__()].distance = currentNode.distance + 1 + h(newKey)
+
+			# Add the node to the open set
+			openSet[newKey.__str__()] = closedSet[newKey.__str__()]
+
+			# Remove the node from the closed set
+			closedSet.pop(newKey.__str__())
+
+			# Re-add the node to the heap
+			heapq.heappush(heap, openSet[newKey])
+
+	# If we've encountered a never-before-seen state, create a new node and add it to the open set and heap.
+	else:
+		newNode = Node(currentNode.distance + 1 + h(newKey), newKey, currentNode.distance + 1, currentNode)
+		openSet[newKey.__str__()] = newNode
+		heapq.heappush(heap, newNode)
+
+
 class Node:
 	def __init__(self, priority, key, distance, parent):
 		self.priority = priority
 		self.key = key
 		self.distance = distance
 		self.parent = parent
+		self.invalid = False
 
 	# We implement this so the heapq module can properly insert and pop elements from the heap
 	def __lt__(self, other):
 		return self.priority < other.priority
+
+	# Used to determine if we should ignore this node or not
+	def SetAsInvalid(self):
+		self.invalid = True
 
 
 # Our heuristic is going to be half the number
